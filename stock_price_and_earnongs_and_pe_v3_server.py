@@ -3,20 +3,19 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# 1. Streamlit Page Config
+# Set the variable as requested
+chart_font_size = 25
+
+# Streamlit Page Config
 st.set_page_config(page_title="Stock Analysis", layout="wide")
 
-# CSS to reduce Title size by roughly 1/3 (from ~3rem to 2rem)
+# CSS to reduce Title size by roughly 1/3
 st.markdown("<h2 style='text-align: left;'>📈 Stock Fundamental Dashboard</h2>", unsafe_allow_html=True)
 
-# Sidebar Inputs
 ticker_symbol = st.sidebar.text_input("Enter Ticker Symbol", value="ET").upper()
 years = st.sidebar.slider("Years of History", 1, 20, 10)
 
-chart_font_size = 25
-
 if ticker_symbol:
-    # 2. Add the Loading Spinner
     with st.spinner(f'Fetching data for {ticker_symbol}...'):
         ticker = yf.Ticker(ticker_symbol)
         
@@ -43,17 +42,19 @@ if ticker_symbol:
                 pe_df['TTM_EPS_Mapped'] = eps_df['TTM EPS'].reindex(pe_df.index, method='ffill')
                 pe_df['PE_Ratio'] = pe_df['Close'] / pe_df['TTM_EPS_Mapped']
 
-                # 3. Chart Customization (Doubled Font Sizes)
-                # Setting global rcParams for matplotlib
-                plt.rcParams.update({'font.size': f'{chart_font_size}'}) # Base font size doubled
+                # 1. Global Font Scaling
+                plt.rcParams.update({'font.size': chart_font_size})
 
-                fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 12), sharex=True, 
+                # 2. Increase height by 50% (Original was 10, now 15)
+                fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 15), sharex=True, 
                                                     gridspec_kw={'height_ratios': [4, 1, 1]})
 
                 # --- TOP CHART: PRICE ---
                 ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
                 ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=chart_font_size)
-                ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=chart_font_size)
+                
+                # 3. Bold Chart Title
+                ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=chart_font_size + 4, fontweight='bold')
                 ax1.grid(True, alpha=0.3)
 
                 # --- MIDDLE CHART: EPS ---
@@ -64,13 +65,15 @@ if ticker_symbol:
                 # --- BOTTOM CHART: P/E RATIO ---
                 ax3.plot(pe_df.index, pe_df['PE_Ratio'], color='tab:green', linewidth=2)
                 ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=chart_font_size)
-                ax3.set_xlabel('Date', fontsize=20)
+                ax3.set_xlabel('Date', fontsize=chart_font_size)
                 ax3.set_ylim(0, pe_df['PE_Ratio'].quantile(0.98)) 
                 ax3.grid(True, alpha=0.3)
+
+                # Adjusting tick label sizes specifically
+                ax3.tick_params(axis='x', labelsize=chart_font_size - 5)
 
                 plt.tight_layout()
                 st.pyplot(fig)
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
-
