@@ -53,7 +53,7 @@ if ticker_symbol:
                 # --- TOP CHART: PRICE ---
                 ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
                 ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=chart_font_size)
-                ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=24)
+                ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=chart_font_size)
                 ax1.grid(True, alpha=0.3)
 
                 # --- MIDDLE CHART: EPS ---
@@ -73,3 +73,4 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
