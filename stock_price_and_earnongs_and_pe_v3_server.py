@@ -13,6 +13,8 @@ st.markdown("<h2 style='text-align: left;'>📈 Stock Fundamental Dashboard</h2>
 ticker_symbol = st.sidebar.text_input("Enter Ticker Symbol", value="ET").upper()
 years = st.sidebar.slider("Years of History", 1, 20, 10)
 
+chart_font_size = 25
+
 if ticker_symbol:
     # 2. Add the Loading Spinner
     with st.spinner(f'Fetching data for {ticker_symbol}...'):
@@ -43,25 +45,25 @@ if ticker_symbol:
 
                 # 3. Chart Customization (Doubled Font Sizes)
                 # Setting global rcParams for matplotlib
-                plt.rcParams.update({'font.size': 18}) # Base font size doubled
+                plt.rcParams.update({'font.size': f'{chart_font_size}'}) # Base font size doubled
 
                 fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 12), sharex=True, 
                                                     gridspec_kw={'height_ratios': [4, 1, 1]})
 
                 # --- TOP CHART: PRICE ---
                 ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
-                ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=20)
+                ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=chart_font_size)
                 ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=24)
                 ax1.grid(True, alpha=0.3)
 
                 # --- MIDDLE CHART: EPS ---
                 ax2.step(eps_df_filtered.index, eps_df_filtered['TTM EPS'], color='tab:red', where='post', linewidth=2.5)
-                ax2.set_ylabel('TTM EPS', fontweight='bold', fontsize=20)
+                ax2.set_ylabel('TTM EPS', fontweight='bold', fontsize=chart_font_size)
                 ax2.grid(True, alpha=0.3)
 
                 # --- BOTTOM CHART: P/E RATIO ---
                 ax3.plot(pe_df.index, pe_df['PE_Ratio'], color='tab:green', linewidth=2)
-                ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=20)
+                ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=chart_font_size)
                 ax3.set_xlabel('Date', fontsize=20)
                 ax3.set_ylim(0, pe_df['PE_Ratio'].quantile(0.98)) 
                 ax3.grid(True, alpha=0.3)
