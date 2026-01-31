@@ -24,12 +24,12 @@ if ticker_symbol:
             company_name = info.get('longName', ticker_symbol)
             
             price_history = ticker.history(period=f"{years}y")
-            price_history.index = price_history.index.tz_localize(None)
 
             # 2. VALIDATION: Check if data actually exists
             if price_history.empty:
                 st.error(f"❌ Ticker '{ticker_symbol}' not found. Please check the spelling (e.g., AAPL, TSLA, MSFT).")
             else:    
+                price_history.index = price_history.index.tz_localize(None)
                 eps_data = ticker.get_earnings_dates(limit=100)
     
                 if eps_data is None or eps_data.empty:
@@ -82,4 +82,5 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
