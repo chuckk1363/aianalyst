@@ -3,89 +3,77 @@ import yfinance as yf
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# Set the variable
+# Set the variable as requested
 chart_font_size = 25
 
 # Streamlit Page Config
 st.set_page_config(page_title="Stock Analysis", layout="wide")
 
-# Header
+# CSS to reduce Title size by roughly 1/3
 st.markdown("<h2 style='text-align: left;'>📈 Stock Fundamental Dashboard</h2>", unsafe_allow_html=True)
 
 ticker_symbol = st.sidebar.text_input("Enter Ticker Symbol", value="ET").upper()
 years = st.sidebar.slider("Years of History", 1, 20, 10)
 
 if ticker_symbol:
-    with st.spinner(f'Searching for {ticker_symbol}...'):
+    with st.spinner(f'Fetching data for {ticker_symbol}...'):
         ticker = yf.Ticker(ticker_symbol)
         
         try:
-            # 1. FETCH PRICE HISTORY FIRST
-            price_history = ticker.history(period=f"{years}y")
+            info = ticker.info
+            company_name = info.get('longName', ticker_symbol)
             
-            # 2. VALIDATION: Check if data actually exists
-            if price_history.empty:
-                st.error(f"❌ Ticker '{ticker_symbol}' not found. Please check the spelling (e.g., AAPL, TSLA, MSFT).")
+            price_history = ticker.history(period=f"{years}y")
+            price_history.index = price_history.index.tz_localize(None)
+            eps_data = ticker.get_earnings_dates(limit=100)
+
+            if eps_data is None or eps_data.empty:
+                st.error(f"Could not find earnings data for {ticker_symbol}")
             else:
-                # Proceed only if data exists
-                price_history.index = price_history.index.tz_localize(None)
+                eps_df = eps_data.dropna(subset=['Reported EPS']).copy()
+                eps_df.index = eps_df.index.tz_localize(None)
+                eps_df = eps_df.groupby(eps_df.index).mean().sort_index()
+                eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window=4).sum()
+
+                start_date = price_history.index.min()
+                eps_df_filtered = eps_df.loc[start_date:]
+
+                pe_df = price_history[['Close']].copy()
+                pe_df['TTM_EPS_Mapped'] = eps_df['TTM EPS'].reindex(pe_df.index, method='ffill')
+                pe_df['PE_Ratio'] = pe_df['Close'] / pe_df['TTM_EPS_Mapped']
+
+                # 1. Global Font Scaling
+                plt.rcParams.update({'font.size': chart_font_size})
+
+                # 2. Increase height by 50% (Original was 10, now 15)
+                fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 15), sharex=True, 
+                                                    gridspec_kw={'height_ratios': [4, 1, 1]})
+
+                # --- TOP CHART: PRICE ---
+                ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
+                ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=chart_font_size)
                 
-                info = ticker.info
-                company_name = info.get('longName', ticker_symbol)
-                
-                # Fetch Earnings
-                eps_data = ticker.get_earnings_dates(limit=100)
+                # 3. Bold Chart Title
+                ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=chart_font_size + 4, fontweight='bold')
+                ax1.grid(True, alpha=0.3)
 
-                if eps_data is None or eps_data.empty:
-                    st.warning(f"Note: Found price data, but no earnings data available for {ticker_symbol}.")
-                else:
-                    # Clean Earnings Data
-                    eps_df = eps_data.reset_index()
-                    eps_df.columns.values[0] = 'Date'
-                    eps_df.set_index('Date', inplace=True)
-                    eps_df = eps_df.dropna(subset=['Reported EPS']).copy()
-                    eps_df.index = eps_df.index.tz_localize(None)
-                    eps_df = eps_df.groupby(eps_df.index).mean().sort_index()
-                    eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window=4).sum()
+                # --- MIDDLE CHART: EPS ---
+                ax2.step(eps_df_filtered.index, eps_df_filtered['TTM EPS'], color='tab:red', where='post', linewidth=2.5)
+                ax2.set_ylabel('TTM EPS', fontweight='bold', fontsize=chart_font_size)
+                ax2.grid(True, alpha=0.3)
 
-                    # P/E Calculation
-                    pe_df = price_history[['Close']].copy()
-                    pe_df['TTM_EPS_Mapped'] = eps_df['TTM EPS'].reindex(pe_df.index, method='ffill')
-                    pe_df['PE_Ratio'] = pe_df['Close'] / pe_df['TTM_EPS_Mapped']
+                # --- BOTTOM CHART: P/E RATIO ---
+                ax3.plot(pe_df.index, pe_df['PE_Ratio'], color='tab:green', linewidth=2)
+                ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=chart_font_size)
+                ax3.set_xlabel('Date', fontsize=chart_font_size)
+                ax3.set_ylim(0, pe_df['PE_Ratio'].quantile(0.98)) 
+                ax3.grid(True, alpha=0.3)
 
-                    # Chart Setup
-                    plt.rcParams.update({'font.size': chart_font_size})
-                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 15), sharex=True, 
-                                                        gridspec_kw={'height_ratios': [4, 1, 1]})
+                # Adjusting tick label sizes specifically
+                ax3.tick_params(axis='x', labelsize=chart_font_size - 5)
 
-                    # --- TOP CHART ---
-                    ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
-                    ax1.set_ylabel('Price (USD)', fontweight='bold', fontsize=chart_font_size)
-                    ax1.set_title(f'{company_name} ({ticker_symbol})', fontsize=chart_font_size + 4, fontweight='bold')
-                    ax1.grid(True, alpha=0.3)
-
-                    # --- MIDDLE CHART ---
-                    ax2.step(eps_df_filtered.index if 'eps_df_filtered' in locals() else eps_df.index, 
-                             eps_df['TTM EPS'], color='tab:red', where='post', linewidth=2.5)
-                    ax2.set_ylabel('TTM EPS', fontweight='bold', fontsize=chart_font_size)
-                    ax2.grid(True, alpha=0.3)
-
-                    # --- BOTTOM CHART ---
-                    ax3.plot(pe_df.index, pe_df['PE_Ratio'], color='tab:green', linewidth=2)
-                    ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=chart_font_size)
-                    ax3.set_xlabel('Date', fontsize=chart_font_size)
-                    
-                    pe_upper_bound = pe_df['PE_Ratio'].quantile(0.98)
-                    if pd.notnull(pe_upper_bound):
-                        ax3.set_ylim(0, pe_upper_bound)
-                    
-                    ax3.grid(True, alpha=0.3)
-                    ax3.tick_params(axis='x', labelsize=chart_font_size - 5)
-
-                    plt.tight_layout()
-                    st.pyplot(fig)
+                plt.tight_layout()
+                st.pyplot(fig)
                 
         except Exception as e:
-            # Catch-all for other unexpected issues
-            st.error(f"An unexpected error occurred: {e}")
-            
+            st.error(f"Error fetching data: {e}")
