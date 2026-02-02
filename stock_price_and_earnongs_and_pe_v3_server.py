@@ -76,7 +76,18 @@ if ticker_symbol:
                     ax3.plot(pe_df.index, pe_df['PE_Ratio'], color='tab:green', linewidth=2)
                     ax3.set_ylabel('P/E Ratio', fontweight='bold', fontsize=chart_font_size)
                     ax3.set_xlabel('Date', fontsize=chart_font_size)
-                    ax3.set_ylim(0, pe_df['PE_Ratio'].quantile(0.98)) 
+
+                    # Filter outliers for the P/E scale. Also handle stocks whose P/E is negative.
+                    maxlim = pe_df['PE_Ratio'].quantile(0.98)
+                    minlim = pe_df['PE_Ratio'].quantile(0.02)
+                
+                    print(f'maxlim: {maxlim}, minlim: {minlim}')
+                    
+                    if (maxlim > 0 and minlim > 0):
+                        ax3.set_ylim(0, maxlim)
+                    else:
+                        ax3.set_ylim(minlim, maxlim)
+           
                     ax3.grid(True, alpha=0.3)
     
                     # Adjusting tick label sizes specifically
@@ -87,6 +98,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
