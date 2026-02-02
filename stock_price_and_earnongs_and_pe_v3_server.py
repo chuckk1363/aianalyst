@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 # Set the variable as requested
 chart_font_size = 25
@@ -86,6 +87,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
