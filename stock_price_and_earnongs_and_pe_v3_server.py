@@ -46,7 +46,11 @@ if ticker_symbol:
                     pe_df = price_history[['Close']].copy()
                     pe_df['TTM_EPS_Mapped'] = eps_df['TTM EPS'].reindex(pe_df.index, method='ffill')
                     pe_df['PE_Ratio'] = pe_df['Close'] / pe_df['TTM_EPS_Mapped']
-    
+                    
+                    # Removes Infs and NaNs
+                    pe_df.replace([np.inf, -np.inf], np.nan, inplace=True)
+                    pe_df = pe_df.dropna(subset=['PE_Ratio'])
+
                     # 1. Global Font Scaling
                     plt.rcParams.update({'font.size': chart_font_size})
     
@@ -82,5 +86,6 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
