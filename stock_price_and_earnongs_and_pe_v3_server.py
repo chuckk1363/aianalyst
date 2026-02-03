@@ -36,11 +36,29 @@ if ticker_symbol:
                 if eps_data is None or eps_data.empty:
                     st.error(f"Could not find earnings data for {ticker_symbol}")
                 else:
-                    eps_df = eps_data.dropna(subset=['Reported EPS']).copy()
+                    # 1. CLEANING
+                    eps_df = eps_data.reset_index()
+                    eps_df.columns.values[0] = 'Date'
+                    eps_df.set_index('Date', inplace=True)
+                    eps_df = eps_df.dropna(subset=['Reported EPS']).copy()
                     eps_df.index = eps_df.index.tz_localize(None)
+                    
+                    # Resolve duplicates (Yahoo sometimes lists the same date twice with different times)
                     eps_df = eps_df.groupby(eps_df.index).mean().sort_index()
-                    eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window=4).sum()
-    
+                
+                    # 2. SMARTER TTM CALCULATION
+                    # Instead of assuming 4 rows = 1 year, we use a time-based rolling window.
+                    # '365D' sums all reported EPS in the last 365 days.
+                    eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window='365D', min_periods=1).sum()
+                
+                    # 3. GAP DETECTION (Validation)
+                    # Check if the most recent earnings date is too old (e.g., more than 8 months ago)
+                    last_report = eps_df.index.max()
+                    days_since_report = (pd.Timestamp.now() - last_report).days
+                    
+                    if days_since_report > 240: # 8 months
+                        st.error(f"⚠️ Warning: Earnings data for {ticker_symbol} appears outdated or incomplete (Last report: {last_report.date()}). P/E calculations may be inaccurate.")
+                        
                     start_date = price_history.index.min()
                     eps_df_filtered = eps_df.loc[start_date:]
     
@@ -98,6 +116,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
