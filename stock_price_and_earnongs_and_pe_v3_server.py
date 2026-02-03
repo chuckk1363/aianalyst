@@ -46,10 +46,28 @@ if ticker_symbol:
                     # Resolve duplicates (Yahoo sometimes lists the same date twice with different times)
                     eps_df = eps_df.groupby(eps_df.index).mean().sort_index()
                 
-                    # 2. SMARTER TTM CALCULATION
-                    # Instead of assuming 4 rows = 1 year, we use a time-based rolling window.
-                    # '365D' sums all reported EPS in the last 365 days.
-                    eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window='365D', min_periods=1).sum()
+                    # 2. FREQUENCY DETECTION
+                    # Calculate the number of days between reports
+                    if len(eps_df) > 1:
+                        days_diff = eps_df.index.to_series().diff().dt.days.median()
+                        
+                        # Decide window size: 
+                        # If median gap is > 120 days, it's likely Semi-Annual (2 reports/year)
+                        # Otherwise, assume Quarterly (4 reports/year)
+                        if days_diff > 120:
+                            window_size = 2
+                            freq_label = "Semi-Annual"
+                        else:
+                            window_size = 4
+                            freq_label = "Quarterly"
+                        
+                        st.sidebar.info(f"Detected {freq_label} reporting.")
+                    else:
+                        window_size = 1 # Fallback for very new companies
+                
+                    # 3. ROBUST TTM CALCULATION
+                    # We use the detected window size to sum the reports
+                    eps_df['TTM EPS'] = eps_df['Reported EPS'].rolling(window=window_size).sum()
                 
                     # 3. GAP DETECTION (Validation)
                     # Check if the most recent earnings date is too old (e.g., more than 8 months ago)
@@ -116,6 +134,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
