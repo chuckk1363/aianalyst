@@ -177,7 +177,7 @@ if ticker_symbol:
                     ax3.set_xlabel('Date', fontsize=chart_font_size)
 
                     # Filter outliers for the P/E scale. Also handle stocks whose P/E is negative.
-                    maxlim = min([pe_df['PE_Ratio'].quantile(0.98), 100.0])
+                    maxlim = min([pe_df['PE_Ratio'].quantile(0.98), 600.0])
                     minlim = max([pe_df['PE_Ratio'].quantile(0.02), -100.0])
                 
                     maxlim = max([maxlim, minlim])
@@ -200,6 +200,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
