@@ -638,8 +638,8 @@ if ticker_symbol:
                     ax3.tick_params(axis='x', labelsize=chart_font_size - 5)
                     
                     # Create individual text elements with different styles
-                    headersize=20
-                    infosize=14
+                    headersize=30
+                    infosize=21
                     header2size=infosize
                     
                     headerprops = dict(size=headersize, weight='bold')
@@ -698,6 +698,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
