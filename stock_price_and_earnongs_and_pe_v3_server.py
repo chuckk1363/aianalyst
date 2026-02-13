@@ -457,7 +457,7 @@ st.set_page_config(page_title="Stock Analysis", layout="wide")
 # CSS to reduce Title size by roughly 1/3
 st.markdown("<h2 style='text-align: left;'>📈 Stock Fundamental Dashboard</h2>", unsafe_allow_html=True)
 
-#@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400)
 def get_sec_eps_final(ticker_symbol):
     ticker = ticker_symbol.upper().strip()
     headers = {'User-Agent': "Chuck Krapf (chuckkrapf@yahoo.com)"}
@@ -698,6 +698,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
