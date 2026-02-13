@@ -598,7 +598,7 @@ if ticker_symbol:
     
                     # 2. Increase height by 50% (Original was 10, now 15)
                     fig, (ax1, ax2, ax3, ax_text) = plt.subplots(4, 1, figsize=(16, 20), sharex=True, 
-                                                        gridspec_kw={'height_ratios': [8, 1, 1, 2]})
+                                                        gridspec_kw={'height_ratios': [6, 2, 2, 2]})
     
                     # --- TOP CHART: PRICE ---
                     ax1.plot(price_history.index, price_history['Close'], color='tab:blue', linewidth=2)
@@ -698,6 +698,7 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
+
 
 
 
