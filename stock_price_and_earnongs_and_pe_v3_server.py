@@ -2,8 +2,65 @@ use_streamlit = True
 
 if use_streamlit:
     import streamlit as st
-#else:
-#    class Streamlit:
+else:
+    class Streamlit:
+
+        class Sidebar:
+
+            def text_input(self, prompt, value):
+                return value
+
+            def slider(self, prompt, minval, maxval, default):
+                return default
+
+
+        def __init__(self):
+
+            self.sidebar = self.Sidebar()
+
+
+        def set_page_config(self, page_title, layout):
+
+            self.page_title = page_title
+            self.layout = layout
+
+
+        def markdown(self, markdown_txt, unsafe_allow_html):
+
+            self.markdown_txt = markdown_txt
+            self.unsafe_allow_html = unsafe_allow_html
+
+        def spinner(self, label):
+
+            # Returns an object for a 'with' statement
+            class spinner_obj:
+
+                def __init__(self, label):
+
+                    self.label = label
+
+                def __enter__(self):
+
+                    pass
+
+                def __exit__(self, arg1, arg2, arg3):
+
+                    pass
+
+
+            return spinner_obj(label)
+
+        def error(self, txt):
+
+            print(f"Error: {txt}")
+
+
+        def pyplot(self, fig):
+
+            plt.show()
+
+
+    st = Streamlit()
 
 
 import yfinance as yf
@@ -113,6 +170,48 @@ def is_dividend_data_ok(div_df):
     return 'start' in div_df.columns and 'end' in div_df.columns
 
 
+
+def calc_dividends_from_total_dividends_and_shares_outstanding(ticker, us_gaap):
+
+    total_div_tags = [
+        'Dividends', 
+        'PaymentsOfDividendsCommonStock',
+        'DividendsCommonStock', # From the Statement of Retained Earnings
+        'PartnersCapitalAccountDistributions', # Common for MLPs
+        'DistributionMadeToLimitedPartnerCashDistributionsPaid',
+        'RetainedEarningsDividends', # Sometimes used by companies with simple structures
+    ]
+
+    total_div_val = 0
+    for tag in total_div_tags:
+        if tag in us_gaap and 'USD' in us_gaap[tag].get('units', {}):
+            # Get TTM Total Dividends
+            temp_df = pd.DataFrame(us_gaap[tag]['units']['USD'])
+            temp_df['end'] = pd.to_datetime(temp_df['end'])
+            temp_df['start'] = pd.to_datetime(temp_df.get('start', temp_df['end']))
+            temp_df['days'] = (temp_df['end'] - temp_df['start']).dt.days
+            
+            # For STZ, 'Dividends' usually shows up in 10-K/10-Q as a flow
+            # We sum the last 4 quarters or take the latest 10-K
+            discrete = temp_df[temp_df['days'].between(80, 105)]
+            if not discrete.empty:
+                total_div_val = discrete.sort_values('end').tail(4)['val'].sum()
+            else:
+                total_div_val = temp_df.sort_values('end').iloc[-1]['val']
+            break
+    
+    if total_div_val > 0:
+        # Get current shares outstanding from yfinance
+        ytick = yf.Ticker(ticker)
+        shares = ytick.info.get('sharesOutstanding')
+        if shares:
+            return total_div_val / shares
+        else:
+            return 0.0
+    else:
+        return 0.0
+
+
 def get_dividend_yield_percent_final(ticker):
     """
     Calculates the actual TTM Dividend Yield % by summing the last 4 
@@ -126,6 +225,12 @@ def get_dividend_yield_percent_final(ticker):
         'CommonStockDividendsPerShareDeclared',
         'CommonStockDividendsPerShareCashPaid',
         'DividendsCommonStockCash', # Sometimes used for per-share if units are USD/shares
+        'CashDividendsDeclaredPerCommonShare' # STZ specific fallback
+        # MLP / Partnership Tags (For ET)
+        'DistributionMadeToLimitedPartnerDistributionsDeclaredPerUnit',
+        'DistributionMadeToLimitedPartnerDistributionsPaidPerUnit',
+        'DistributionMadeToMemberOrLimitedPartnerCashDistributionsPaid',
+        'DividendsPayableAmountPerShare', # Common in older filings or specific REITs
     ]
     
     try:
@@ -138,6 +243,7 @@ def get_dividend_yield_percent_final(ticker):
         data = requests.get(facts_url, headers=headers).json()
         us_gaap = data['facts']['us-gaap']
 
+        #print(f"us_gaap.keys(): {us_gaap.keys()}")
         # Find first available tag
         df = pd.DataFrame()
         for tag in dividend_tags:
@@ -149,36 +255,37 @@ def get_dividend_yield_percent_final(ticker):
                     break
         
         if df.empty:
-            print(f"Error getting dividend yield: Can't find dividend tag in facts | us-gaap database")
-            return 0.0
+            #print(f"Error getting dividend yield: Can't find dividend tag in facts | us-gaap database")
+            ttm_dividend_sum = calc_dividends_from_total_dividends_and_shares_outstanding(ticker, us_gaap)
             
-        # Extract and Filter Dividend Data
-        # We look for the 'CommonStockDividendsPerShareDeclared' tag
-        #print(f"data tags: {data['facts']['us-gaap'].keys()}")
-        #div_raw = data['facts']['us-gaap']['CommonStockDividendsPerShareDeclared']['units']['USD/shares']
-        #df = pd.DataFrame(div_raw)
-        df['start'] = pd.to_datetime(df['start'])
-        df['end'] = pd.to_datetime(df['end'])
-        
-        # Calculate duration: This is the key to avoiding cumulative YTD values
-        df['duration'] = (df['end'] - df['start']).dt.days
-        
-        # Filter for discrete quarters (approx 90 days)
-        # This removes the YTD sums like 2.04, 3.10, and 4.00
-        df_discrete = df[(df['duration'] >= 80) & (df['duration'] <= 100)].copy()
-        
-        # 3. Deduplicate and Get TTM Sum
-        # Keep the most recently filed entry for any given period end
-        df_discrete = df_discrete.sort_values(['end', 'filed']).drop_duplicates('end', keep='last')
-        
-        # Sort by date and take the last 4 quarters
-        last_4_payments = df_discrete.sort_values('end', ascending=False)['val'].head(4)
-        
-        if last_4_payments.empty:
-            print("get_dividend_yield_percent_final error: last_4_payments.empty")
-            return 0.0
+        else:
+            # Extract and Filter Dividend Data
+            # We look for the 'CommonStockDividendsPerShareDeclared' tag
+            #print(f"data tags: {data['facts']['us-gaap'].keys()}")
+            #div_raw = data['facts']['us-gaap']['CommonStockDividendsPerShareDeclared']['units']['USD/shares']
+            #df = pd.DataFrame(div_raw)
+            df['start'] = pd.to_datetime(df['start'])
+            df['end'] = pd.to_datetime(df['end'])
             
-        ttm_dividend_sum = last_4_payments.sum()
+            # Calculate duration: This is the key to avoiding cumulative YTD values
+            df['duration'] = (df['end'] - df['start']).dt.days
+            
+            # Filter for discrete quarters (approx 90 days)
+            # This removes the YTD sums like 2.04, 3.10, and 4.00
+            df_discrete = df[(df['duration'] >= 80) & (df['duration'] <= 100)].copy()
+            
+            # 3. Deduplicate and Get TTM Sum
+            # Keep the most recently filed entry for any given period end
+            df_discrete = df_discrete.sort_values(['end', 'filed']).drop_duplicates('end', keep='last')
+            
+            # Sort by date and take the last 4 quarters
+            last_4_payments = df_discrete.sort_values('end', ascending=False)['val'].head(4)
+            
+            if last_4_payments.empty:
+                print("get_dividend_yield_percent_final error: last_4_payments.empty")
+                return 0.0
+                
+            ttm_dividend_sum = last_4_payments.sum()
 
         # 4. Get Current Price
         # Using yfinance to ensure the yield is based on the current market value
@@ -457,7 +564,7 @@ st.set_page_config(page_title="Stock Analysis", layout="wide")
 # CSS to reduce Title size by roughly 1/3
 st.markdown("<h2 style='text-align: left;'>📈 Stock Fundamental Dashboard</h2>", unsafe_allow_html=True)
 
-@st.cache_data(ttl=86400)
+#@st.cache_data(ttl=86400)
 def get_sec_eps_final(ticker_symbol):
     ticker = ticker_symbol.upper().strip()
     headers = {'User-Agent': "Chuck Krapf (chuckkrapf@yahoo.com)"}
@@ -638,8 +745,8 @@ if ticker_symbol:
                     ax3.tick_params(axis='x', labelsize=chart_font_size - 5)
                     
                     # Create individual text elements with different styles
-                    headersize=40
-                    infosize=30
+                    headersize=30
+                    infosize=21
                     header2size=infosize
                     
                     headerprops = dict(size=headersize, weight='bold')
@@ -698,11 +805,6 @@ if ticker_symbol:
                 
         except Exception as e:
             st.error(f"Error fetching data: {e}")
-
-
-
-
-
 
 
 
