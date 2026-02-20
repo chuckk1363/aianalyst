@@ -793,6 +793,7 @@ if ticker_symbol:
 
                     if price_choice == AdjustedPrices:
                         rph = ticker.history(period=f"{years}y", auto_adjust=False)
+                        rph.index = rph.index.tz_localize(None)
                         raw_price_history= rph[['Close']]
 
                     pe_df = raw_price_history.copy()
