@@ -762,8 +762,6 @@ if ticker_symbol:
     with st.spinner(f'Fetching data for {ticker_symbol}...'):
         ticker = yf.Ticker(ticker_symbol)
         
-        use_adjusted_price = False
-
         try:
             info = ticker.info
             company_name = info.get('longName', ticker_symbol)
@@ -791,7 +789,13 @@ if ticker_symbol:
                     start_date = price_history.index.min()
                     eps_df_filtered = eps_df.loc[start_date:]
     
-                    pe_df = price_history[['Close']].copy()
+                    raw_price_history = price_history[['Close']]
+
+                    if price_choice == AdjustedPrices:
+                        rph = ticker.history(period=f"{years}y", auto_adjust=False)
+                        raw_price_history= rph[['Close']]
+
+                    pe_df = raw_price_history.copy()
                     pe_df['TTM_EPS_Mapped'] = eps_df['TTM EPS'].reindex(pe_df.index, method='ffill')
                     pe_df['PE_Ratio'] = pe_df['Close'] / pe_df['TTM_EPS_Mapped']
                     
