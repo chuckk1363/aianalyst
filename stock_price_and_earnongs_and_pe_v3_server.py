@@ -14,6 +14,10 @@ else:
                 return default
 
 
+            def radio(self, name, options, help):
+                return options[0]
+
+
         def __init__(self):
 
             self.sidebar = self.Sidebar()
@@ -241,6 +245,10 @@ def get_dividend_yield_percent_final(ticker):
         
         facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
         data = requests.get(facts_url, headers=headers).json()
+
+        if 'us-gaap' not in data['facts']:
+            print(f"us-gaap not in data['facts'], data['facts'].keys(): {data['facts'].keys()}")
+    
         us_gaap = data['facts']['us-gaap']
 
         #print(f"us_gaap.keys(): {us_gaap.keys()}")
@@ -402,6 +410,85 @@ def get_profitability_metrics(ticker):
 # --- Execution ---
 # roe, roic = get_profitability_metrics("MO")
 # print(f"ROE: {roe}% | ROIC: {roic}%")
+
+
+
+def get_profitability_metrics2(ticker):
+    """
+    Returns (ROE, ROIC) as a tuple of floats. Returns (0.0, 0.0) on error.
+    """
+    ticker = ticker.upper().strip()
+    headers = {"User-Agent": "FinanceAnalyst/1.0 (chuckkrapf@yahoo.com)"}
+    
+    try:
+        # 1. Get CIK
+        tkr_url = "https://www.sec.gov/files/company_tickers.json"
+        ticker_json = requests.get(tkr_url, headers=headers).json()
+        cik = next((str(v['cik_str']).zfill(10) for k, v in ticker_json.items() if v['ticker'] == ticker), None)
+
+        # 2. Get SEC Facts
+        facts_url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+        data = requests.get(facts_url, headers=headers).json()
+        gaap = data['facts']['us-gaap']
+
+        def get_latest_val(tag_list, is_duration=False):
+            """Helper to grab the latest value from a list of possible SEC tags."""
+            for tag in tag_list:
+                if tag in gaap:
+                    df = pd.DataFrame(gaap[tag]['units']['USD'])
+                    if is_duration:
+                        df['start'] = pd.to_datetime(df['start'])
+                        df['end'] = pd.to_datetime(df['end'])
+                        df['dur'] = (df['end'] - df['start']).dt.days
+                        # Widened buffer: Oil majors sometimes report slightly off-cycle (95-102 days)
+                        df = df[(df['dur'] >= 80) & (df['dur'] <= 105)]
+                        if not df.empty:
+                            return df.sort_values('end').tail(4)['val'].sum()
+                    else:
+                        return df.sort_values('end').iloc[-1]['val']
+            return 0
+
+        # --- Data Extraction ---
+        net_income = get_latest_val(['NetIncomeLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic'], is_duration=True)
+        
+        # EBIT: Added CVX's primary pre-tax tag to the list
+        ebit = get_latest_val([
+            'OperatingIncomeLoss', 
+            'IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments',
+            'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest'
+        ], is_duration=True)
+        
+        # Tax Rate Calculation
+        tax_exp = get_latest_val(['IncomeTaxExpenseBenefit'], is_duration=True)
+        # Use a fallback: if the specific pretax tag is 0, use our 'ebit' for the denominator
+        pretax = get_latest_val(['IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments'], is_duration=True)
+        if pretax == 0: pretax = ebit 
+        
+        tax_rate = max(0, min(tax_exp / pretax, 0.40)) if pretax > 0 else 0.21 
+        
+        # Equity
+        equity = get_latest_val(['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'])
+
+        # Debt: Added 'LinesOfCreditCurrent' (common in Energy for Capex financing)
+        short_debt = get_latest_val(['ShortTermBorrowings', 'DebtCurrent', 'LinesOfCreditCurrent'])
+        long_debt = get_latest_val(['LongTermDebtNoncurrent', 'LongTermDebt'])
+        total_debt = short_debt + long_debt
+        
+        # Cash: Added restricted cash tag
+        cash = get_latest_val(['CashAndCashEquivalentsAtCarryingValue', 'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents'])
+
+        # --- Calculations ---
+        roe = (net_income / equity) * 100 if equity > 0 else 0
+        
+        nopat = ebit * (1 - tax_rate)
+        invested_capital = equity + total_debt - cash
+        roic = (nopat / invested_capital) * 100 if invested_capital > 0 else 0
+
+        return round(roe, 2), round(roic, 2)
+
+    except Exception as e:
+        print(f"Error getting ROE and ROIC for {ticker}: {e}")
+        return 0.0, 0.0
 
 
 def get_debt_to_ebitda(ticker):
@@ -661,15 +748,27 @@ def get_sec_eps_final(ticker_symbol):
 ticker_symbol = st.sidebar.text_input("Enter Ticker Symbol", value="ET").upper()
 years = st.sidebar.slider("Years of History", 1, 20, 10)
 
+# Create the radio button in the sidebar
+AdjustedPrices = "Adjusted Prices"
+RawPrices = "Raw Prices"
+
+price_choice = st.sidebar.radio(
+    "Chart Price Type",
+    options=[AdjustedPrices, RawPrices],
+    help="Adjusted prices account for dividends and splits. Raw prices show the literal historical trade price."
+)
+
 if ticker_symbol:
     with st.spinner(f'Fetching data for {ticker_symbol}...'):
         ticker = yf.Ticker(ticker_symbol)
         
+        use_adjusted_price = False
+
         try:
             info = ticker.info
             company_name = info.get('longName', ticker_symbol)
             
-            price_history = ticker.history(period=f"{years}y")
+            price_history = ticker.history(period=f"{years}y", auto_adjust=(price_choice == AdjustedPrices))
 
             # 2. VALIDATION: Check if data actually exists
             if price_history.empty:
@@ -765,7 +864,7 @@ if ticker_symbol:
 
                     lines.append(TextArea("", textprops=infoprops))
                     lines.append(TextArea("Profitability and Efficiency", textprops=header2props))
-                    roe, roic = get_profitability_metrics(ticker_symbol)
+                    roe, roic = get_profitability_metrics2(ticker_symbol)
                     lines.append(TextArea(f"ROE: {roe}% | ROIC: {roic}%", textprops=infoprops))
                     lines.append(TextArea(f"Free Cash Flow Yield: {get_fcf_yield(ticker_symbol)}%", textprops=infoprops))
 
